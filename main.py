@@ -30,85 +30,102 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 async def fetch_data(data_queue, ndata_queue, url, x):
     async with httpx.AsyncClient(verify=False) as client:
-        response = await client.post(url, data={"mbstatus": "SEARCH", "htno": x})
-        page_soup = soup(response.text, "html.parser")
-
         try:
-            if page_soup.findAll("h1")[0].text == "HTTP Status 500 – Internal Server Error":
-                ndata_queue.put_nowait(x)
-                return False
-            if (
-                page_soup.find("div", {"id": "main-message"})
-                .findAll("span")[0]
-                .text
-                == "Your connection was interrupted"
-            ):
-                ndata_queue.put_nowait(x)
-                return False
-        except:
-            pass
+            response = await client.post(url, data={"mbstatus": "SEARCH", "htno": x}, timeout=30.0)
+            response.raise_for_status()
+            page_soup = soup(response.text, "html.parser")
 
-        try:
-            check = page_soup.find("table", {"id": "AutoNumber1"})
-            if check is None:
-                ndata_queue.put_nowait(x)
-                return False
+            try:
+                if page_soup.findAll("h1")[0].text == "HTTP Status 500 – Internal Server Error":
+                    ndata_queue.put_nowait(x)
+                    return False
+                if (
+                    page_soup.find("div", {"id": "main-message"})
+                    .findAll("span")[0]
+                    .text
+                    == "Your connection was interrupted"
+                ):
+                    ndata_queue.put_nowait(x)
+                    return False
+            except:
+                pass
 
-            if check.findAll("b")[1].text == "Personal Details":
-                container2 = page_soup.find("table", {"id": "AutoNumber4"})
-                Results1 = []
-                for i in container2.findAll("tr")[2:]:
-                    Marks1 = []
-                    temp = i.findAll("td")
-                    Marks1.append(temp[0].text.strip())
-                    Marks1.append(temp[1].text.strip())
-                    Marks1.append(temp[2].text.strip())
-                    Marks1.append(temp[3].text.strip())
-                    Marks1.append(temp[4].text.strip())
-                    Results1.append(Marks1)
+            try:
+                check = page_soup.find("table", {"id": "AutoNumber1"})
+                if check is None:
+                    ndata_queue.put_nowait(x)
+                    return False
 
-                container3 = page_soup.find("table", {"id": "AutoNumber5"})
-                Results2 = []
-                for i in container3.findAll("tr")[2:]:
-                    Marks2 = []
-                    Deat = i.findAll("td")
-                    Marks2.append(Deat[0].text.strip())
-                    Marks2.append(Deat[1].text.strip())
-                    Marks2.append(Deat[2].text.strip())
-                    Results2.append(Marks2)
+                if check.findAll("b")[1].text == "Personal Details":
+                    container2 = page_soup.find("table", {"id": "AutoNumber4"})
+                    Results1 = []
+                    for i in container2.findAll("tr")[2:]:
+                        Marks1 = []
+                        temp = i.findAll("td")
+                        Marks1.append(temp[0].text.strip())
+                        Marks1.append(temp[1].text.strip())
+                        Marks1.append(temp[2].text.strip())
+                        Marks1.append(temp[3].text.strip())
+                        Marks1.append(temp[4].text.strip())
+                        Results1.append(Marks1)
 
-                for roti in sorted(Results1):
-                    temp = {}
-                    temp["Roll Number"] = x
-                    if len(Results2[0]) == 3:
-                        temp["CGPA"] = Results2[0][2]
-                    temp["Sub Code"] = roti[0]
-                    temp["Subject Name"] = roti[1]
-                    temp["Credits"] = roti[2]
-                    temp["Grade Points"] = roti[3]
-                    temp["Grade Secured"] = roti[4]
-                    for roties in sorted(Results2):
-                        if roti[0][0] == roties[0]:
-                            temp["SGPA"] = roties[1]
-                            break
+                    container3 = page_soup.find("table", {"id": "AutoNumber5"})
+                    Results2 = []
+                    for i in container3.findAll("tr")[2:]:
+                        Marks2 = []
+                        Deat = i.findAll("td")
+                        Marks2.append(Deat[0].text.strip())
+                        Marks2.append(Deat[1].text.strip())
+                        Marks2.append(Deat[2].text.strip())
+                        Results2.append(Marks2)
 
-                    data_queue.put_nowait(temp)
-            elif (
-                "The Hall Ticket Number"
-                == page_soup.find("table", {"id": "AutoNumber1"}).findAll("b")[1].text[9:31]
-            ):
+                    for roti in sorted(Results1):
+                        temp = {}
+                        temp["Roll Number"] = x
+                        if len(Results2[0]) == 3:
+                            temp["CGPA"] = Results2[0][2]
+                        temp["Sub Code"] = roti[0]
+                        temp["Subject Name"] = roti[1]
+                        temp["Credits"] = roti[2]
+                        temp["Grade Points"] = roti[3]
+                        temp["Grade Secured"] = roti[4]
+                        for roties in sorted(Results2):
+                            if roti[0][0] == roties[0]:
+                                temp["SGPA"] = roties[1]
+                                break
+
+                        data_queue.put_nowait(temp)
+                elif (
+                    "The Hall Ticket Number"
+                    == page_soup.find("table", {"id": "AutoNumber1"}).findAll("b")[1].text[9:31]
+                ):
+                    return True
+                else:
+                    ndata_queue.put_nowait(x)
+                    return False
+
                 return True
-            else:
+            except Exception as e:
                 ndata_queue.put_nowait(x)
                 return False
 
-            return True
-        except Exception as e:
-            ndata_queue.put_nowait(x)
-            return False
+        except httpx.ConnectTimeout:
+            # Retry the request with longer timeout
+            try:
+                response = await client.post(url, data={"mbstatus": "SEARCH", "htno": x}, timeout=60.0)
+                response.raise_for_status()
+                # Rest of the code remains the same...
+            except httpx.ConnectTimeout:
+                ndata_queue.put_nowait(x)
+                return False
+            except httpx.HTTPError:
+                ndata_queue.put_nowait(x)
+                return False
+            except Exception as e:
+                ndata_queue.put_nowait(x)
+                return False
 
 
 async def fetch_data_task(data_queue, ndata_queue, url, st, en):
