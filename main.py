@@ -23,17 +23,17 @@ app.add_middleware(
 
 @app.get("/get_obj_file")
 def get_obj_file():
-    file_path = Path("example.obj")
+    file_path = Path("sample.obj")
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(path=file_path, media_type="application/octet-stream", filename="example.obj")
+    return FileResponse(path=file_path, media_type="application/octet-stream", filename="sample.obj")
 
-@app.get("/get_nii_image")
-def get_nii_image():
-    file_path = Path("example.nii.gz")
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(path=file_path, media_type="application/octet-stream", filename="example.nii.gz")
+# @app.get("/get_nii_image")
+# def get_nii_image():
+#     file_path = Path("example.nii.gz")
+#     if not file_path.exists():
+#         raise HTTPException(status_code=404, detail="File not found")
+#     return FileResponse(path=file_path, media_type="application/octet-stream", filename="example.nii.gz")
 
 # if __name__ == "__main__":
 #     import uvicorn
